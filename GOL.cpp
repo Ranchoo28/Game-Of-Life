@@ -1,4 +1,3 @@
-
 #include "readingconf.h"
 
 
@@ -365,5 +364,5 @@ int main(int argc, char* argv[]){
 	return 0;
 }
 
-//mpic++ GirlsProject.cpp -I/usr/include -L/usr/lib/x86_64-linux-gnu -lalleg -o GirlsProject
 //mpic++ GOL.cpp -I/usr/include -L/usr/lib/x86_64-linux-gnu -lalleg -o GOL
+//mpirun -np 2 ./GOL
