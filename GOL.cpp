@@ -6,7 +6,7 @@
 #include <pthread.h>
 #include <allegro.h>
 
-#define v(r,c) (r)*(nColsCurrRank+2)+(c)
+#define v(r,c) (r)*(nColsThisRank+2)+(c)
 
 //configuration.txt
 int nPartX, nPartY;		// N° partizioni lungo asse x (orizzontale)	e lungo asse y (verticale)
@@ -21,12 +21,12 @@ int size;		// N° complessivo di processi
 int rank;		// id del processo attuale
 
 //Variabili inizializzate dalla funzione initAllPartitions
-int nRowsCurrRank, nColsCurrRank;			// N° di righe/colonne del processo corrente
+int nRowsThisRank, nColsThisRank;			// N° di righe/colonne del processo corrente
 
-int *nRowsForEachPart, *nColsForEachPart;	// Array che contengono, per ogni partizione, il n° di righe/colonne al proprio interno (nella partizione)
-//##################### ad esempio nRowsForEachPart[0] conterrà il n° di righe nella prima partizione e nColsForEachPart[0] il n° di colonne.
+int *nRowsPerPartition, *nColsPerPartition;	// Array che contengono, per ogni partizione, il n° di righe/colonne al proprio interno (nella partizione)
+//##################### ad esempio nRowsPerPartition[0] conterrà il n° di righe nella prima partizione e nColsPerPartition[0] il n° di colonne.
 
-int nPartXForEachProc, nPartYForEachProc;	// N° di partizioni X(oriz)/partizioni Y(vert) che contine ciascun processo
+int nPartXPerProc, nPartYPerProc;	// N° di partizioni X(oriz)/partizioni Y(vert) che contine ciascun processo
 
 int nProcOnX;	// N° di processi lungo l'asse x
 
@@ -41,29 +41,29 @@ int * readM;		// matrice di lettura
 int * writeM;		// matrice di scrittura
 
 //INDICI DI INIZIO
-int beginXCurrProc, beginYCurrProc;				// indice d'inizio delle colonne (su x)/ righe (su y) del processo corrente
-int *startColForEachProc, *startRowForEachProc;	// array che contengono, per ogni posizione, gli indici d'inizio delle colonne/righe di ciascun processo
+int startXThisProc, startYThisProc;				// indice d'inizio delle colonne (su x)/ righe (su y) del processo corrente
+int *startColPerProc, *startRowPerProc;	// array che contengono, per ogni posizione, gli indici d'inizio delle colonne/righe di ciascun processo
 
 //SIZE DEI PROCESSI
-int *nRowsForEachProc, *nColsForEachProc;	// array che contengono, per ogni posizione, la sizeY (rows) / sizeX (cols) di ciascun processo
+int *vecRowSizePerProc, *vecColSizePerProc;	// array che contengono, per ogni posizione, la sizeY (rows) / sizeX (cols) di ciascun processo
 
 //MATRICE TOTALE
-int *matTot;	// matrice totale: che viene usata dal rank 0 per ricevere le matrici dagli altri processi e fare la stampa dell'AC
+int *matrix;	// matrice totale: che viene usata dal rank 0 per ricevere le matrici dagli altri processi e fare la stampa dell'AC
 
 //Datatypes
 MPI_Datatype typeColumn;				// Datatype per inviare una colonna
-MPI_Datatype typeMatLessHaloBorders;	// Datatype per inviare una matrice SENZA gli halo borders (mat interna) 
+MPI_Datatype typeMatWithoutHalos;	// Datatype per inviare una matrice SENZA gli halo borders (mat interna) 
 
 //Variabili PTHREADS
-pthread_t * IDthreads;	// array di thread
+pthread_t * vecThreads;	// array di thread
 
 //BARRIERS
-pthread_mutex_t mutexcompletedBarrier;    				// mutex barriera di computazione dell'AC
+pthread_mutex_t mutexReadyBarrier;    				// mutex barriera di computazione dell'AC
 pthread_mutex_t mutexComunicationBarrier;   			// mutex per la barriera di comunicazione delle send /receive
-int contcompletedBarrier =0, contComunicationBarrier=0;	//contatori per le barrier
+int contReadyBarrier =0, contComunicationBarrier=0;	//contatori per le barrier
 
 //CONDITIONS
-pthread_cond_t condcompletedBarrier;      	// condition per la completedBarrier
+pthread_cond_t condReadyBarrier;      	// condition per la completedBarrier
 pthread_cond_t condComunicationBarrier;     // condition per la ComunicationBarrier
 
 
@@ -72,13 +72,13 @@ clock_t inizio, fine;		// tempo all'inizio e alla fine dell'algoritmo per calcol
 int delayAllegro = 80;		// delay per la stampa a schermo di allegro
 int graphicCellDim = 50;	// dimensione grafica di una cella
 int infoLine = 55;			// spazio per scrivere i dati dell'AC
-bool allegroOn = true; 
+bool allegroRun = true; 
 
 void initAllegro(){ 
     allegro_init();
 	install_keyboard();
     set_color_depth(32);  
-	set_window_title("Girls Project APSD");
+	set_window_title("Musalee & Ranchoo APSD Project");
     set_gfx_mode(GFX_AUTODETECT_WINDOWED, totalCols * graphicCellDim, totalRows * graphicCellDim + infoLine, 0, 0);  
 }
 void drawWithAllegro(int step){  //funzione per la stampa a schermo tramite allegro
@@ -88,7 +88,7 @@ void drawWithAllegro(int step){  //funzione per la stampa a schermo tramite alle
 		for(int j = 0; j < totalCols; j++){
 			int x = j * graphicCellDim;
 			int y = i * graphicCellDim;
-			if (matTot[i * totalCols + j] == 1) rectfill(screen, x, y, x + graphicCellDim, y + graphicCellDim,  makecol(19, 0, 7)); //Cella VIVA
+			if (matrix[i * totalCols + j] == 1) rectfill(screen, x, y, x + graphicCellDim, y + graphicCellDim,  makecol(19, 0, 7)); //Cella VIVA
 			else rectfill(screen, x, y, x + graphicCellDim, y + graphicCellDim, makecol(239, 255, 200));							//Cella MORTA
 		}
 	}
@@ -102,17 +102,17 @@ void drawWithAllegro(int step){  //funzione per la stampa a schermo tramite alle
 	//Stampa a schermo --> PARTIZIONI VERTICALI 
 	int y=0;
 	for(int i = 0; i < nPartY; i++){
-		if(i % nPartYForEachProc == 0) line(screen, 0, y, totalCols * graphicCellDim, y, makecol(29, 120, 116));  //Processi
+		if(i % nPartYPerProc == 0) line(screen, 0, y, totalCols * graphicCellDim, y, makecol(29, 120, 116));  //Processi
 		else line(screen, 0, y, totalCols * graphicCellDim, y, makecol(250, 157, 50));							  //Thread (divisioni nei processi)
-		y += nRowsForEachPart[i] * graphicCellDim;
+		y += nRowsPerPartition[i] * graphicCellDim;
 	}
 
 	//Stampa a schermo --> PARTIZIONI ORIZZONTALI 
 	int x=0;
 	for(int i = 0; i < nPartX; i++){
-		if(i%nPartXForEachProc == 0) line(screen, x, 0, x, totalRows * graphicCellDim, makecol(189, 33, 4)); 
+		if(i%nPartXPerProc == 0) line(screen, x, 0, x, totalRows * graphicCellDim, makecol(189, 33, 4)); 
 		else line(screen, x, 0, x, totalRows * graphicCellDim, makecol(193, 140, 93));
-		x += nColsForEachPart[i] * graphicCellDim;
+		x += nColsPerPartition[i] * graphicCellDim;
 	}
 
 	//Stampa a schermo --> INFO
@@ -150,43 +150,43 @@ int sumPartitions(int start, int numPartitions, int* partitionSizes) { // Serve 
 void initAllPartitions() {
 
 	// Inizializza le dimensioni delle partizioni
-    nRowsForEachPart = new int[nPartY]; //quante righe di celle per ogni partizione
-    nColsForEachPart = new int[nPartX]; //quante colonne di celle per ogni partizione
+    nRowsPerPartition = new int[nPartY]; //quante righe di celle per ogni partizione
+    nColsPerPartition = new int[nPartX]; //quante colonne di celle per ogni partizione
 	
     // Trova un divisore comune (i) per nThreads e nPartX o nThreads e nPartY
     //(in base alla formula size* nThreads = nPartX * nPartY si sa che ne esiste sempre uno)
 	// Decide COME suddividere la matrice totale tra i processi (quali sottomatrici assegnare a ciascun processo)
     for (int i = nThreads; i > 0; i--) {
         if ((nThreads % i == 0) && (nPartX % i == 0)) { //se i è un divisore comune di nThreads e nPartX
-            nPartYForEachProc = nThreads / i; //per fare in modo che ad ogni thread venga assegnata una partizione: (nThreads /1)*1= nThreads
-            nPartXForEachProc = i;
+            nPartYPerProc = nThreads / i; //per fare in modo che ad ogni thread venga assegnata una partizione: (nThreads /1)*1= nThreads
+            nPartXPerProc = i;
             break;
         } else if ((nThreads % i == 0) && (nPartY % i == 0)) { //se i è un divisore comune di nThreads e nPartY
-            nPartYForEachProc = i;
-            nPartXForEachProc = nThreads / i;
+            nPartYPerProc = i;
+            nPartXPerProc = nThreads / i;
             break;
         } 
 	}
 
 	//Distribuisco le righe e le colonne tra le partizioni (considerando anche il resto, ovvero il remainder)
-    distributeRowsAndCols(totalRows, nPartY, nRowsForEachPart);
-    distributeRowsAndCols(totalCols, nPartX, nColsForEachPart);
+    distributeRowsAndCols(totalRows, nPartY, nRowsPerPartition);
+    distributeRowsAndCols(totalCols, nPartX, nColsPerPartition);
 
     // Calcola il numero di processi lungo l'asse X
 	// Quante sottomatrici finiscono su X 
-    nProcOnX = nPartX / nPartXForEachProc;
+    nProcOnX = nPartX / nPartXPerProc;
 
     // Scomponi il rank del processo --> COORDINATE DEL PROCESSO
     rankX = rank % nProcOnX;
     rankY = rank / nProcOnX;
 
     // Calcola le dimensioni della sottomatrice per il processo corrente
-    nRowsCurrRank = sumPartitions(rankY * nPartYForEachProc, nPartYForEachProc, nRowsForEachPart);
-    nColsCurrRank = sumPartitions(rankX * nPartXForEachProc, nPartXForEachProc, nColsForEachPart);
+    nRowsThisRank = sumPartitions(rankY * nPartYPerProc, nPartYPerProc, nRowsPerPartition);
+    nColsThisRank = sumPartitions(rankX * nPartXPerProc, nPartXPerProc, nColsPerPartition);
 
     // Inizializza matrici di lettura e scrittura
-    readM = new int[(nRowsCurrRank + 2) * (nColsCurrRank + 2)]; //+2 perchè si considerano le halo cells
-    writeM = new int[(nRowsCurrRank + 2) * (nColsCurrRank + 2)];
+    readM = new int[(nRowsThisRank + 2) * (nColsThisRank + 2)]; //+2 perchè si considerano le halo cells
+    writeM = new int[(nRowsThisRank + 2) * (nColsThisRank + 2)];
 }
 void calculateMooreNeighbourhood(){ // Calcolo del rank dei processi adiacenti (sopra, sotto, sinistra, destra, diagonali)
     rankUp = ((rank - nProcOnX + size) % size);
@@ -199,29 +199,29 @@ void calculateMooreNeighbourhood(){ // Calcolo del rank dei processi adiacenti (
     rankDownRight = ((rankDown + 1) % nProcOnX) + (rankDown / nProcOnX) * nProcOnX;
 }
 void sendRecvRows(int rankUp, int rankDown, MPI_Request &req) {
-    MPI_Isend(&readM[v(1,1)], nColsCurrRank, MPI_INT, rankUp, 17, MPI_COMM_WORLD, &req);
-    MPI_Isend(&readM[v(nRowsCurrRank, 1)], nColsCurrRank, MPI_INT, rankDown, 20, MPI_COMM_WORLD, &req);
+    MPI_Isend(&readM[v(1,1)], nColsThisRank, MPI_INT, rankUp, 17, MPI_COMM_WORLD, &req);
+    MPI_Isend(&readM[v(nRowsThisRank, 1)], nColsThisRank, MPI_INT, rankDown, 20, MPI_COMM_WORLD, &req);
 
-    MPI_Recv(&readM[v(nRowsCurrRank+1, 1)], nColsCurrRank, MPI_INT, rankDown, 17, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    MPI_Recv(&readM[v(0,1)], nColsCurrRank, MPI_INT, rankUp, 20, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Recv(&readM[v(nRowsThisRank+1, 1)], nColsThisRank, MPI_INT, rankDown, 17, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Recv(&readM[v(0,1)], nColsThisRank, MPI_INT, rankUp, 20, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 }
 void sendRecvCols(int rankLeft, int rankRight, MPI_Request &req) {
     MPI_Isend(&readM[v(0, 1)], 1, typeColumn, rankLeft, 12, MPI_COMM_WORLD, &req);
-    MPI_Isend(&readM[v(0, nColsCurrRank)], 1, typeColumn, rankRight, 30, MPI_COMM_WORLD, &req);
+    MPI_Isend(&readM[v(0, nColsThisRank)], 1, typeColumn, rankRight, 30, MPI_COMM_WORLD, &req);
 
     MPI_Recv(&readM[v(0, 0)], 1, typeColumn, rankLeft, 30, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    MPI_Recv(&readM[v(0, nColsCurrRank+1)], 1, typeColumn, rankRight, 12, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Recv(&readM[v(0, nColsThisRank+1)], 1, typeColumn, rankRight, 12, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 }
 void sendRecvCorners(int rankUpLeft, int rankUpRight, int rankDownLeft, int rankDownRight, MPI_Request &req) {
     MPI_Isend(&readM[v(1, 1)], 1, MPI_INT, rankUpLeft, 40, MPI_COMM_WORLD, &req);
-    MPI_Isend(&readM[v(1, nColsCurrRank)], 1, MPI_INT, rankUpRight, 41, MPI_COMM_WORLD, &req);
-    MPI_Isend(&readM[v(nRowsCurrRank, 1)], 1, MPI_INT, rankDownLeft, 42, MPI_COMM_WORLD, &req);
-    MPI_Isend(&readM[v(nRowsCurrRank, nColsCurrRank)], 1, MPI_INT, rankDownRight, 43, MPI_COMM_WORLD, &req);
+    MPI_Isend(&readM[v(1, nColsThisRank)], 1, MPI_INT, rankUpRight, 41, MPI_COMM_WORLD, &req);
+    MPI_Isend(&readM[v(nRowsThisRank, 1)], 1, MPI_INT, rankDownLeft, 42, MPI_COMM_WORLD, &req);
+    MPI_Isend(&readM[v(nRowsThisRank, nColsThisRank)], 1, MPI_INT, rankDownRight, 43, MPI_COMM_WORLD, &req);
 
-    MPI_Recv(&readM[v(nRowsCurrRank+1, 0)], 1, MPI_INT, rankDownLeft, 40, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    MPI_Recv(&readM[v(nRowsCurrRank+1, nColsCurrRank+1)], 1, MPI_INT, rankDownRight, 41, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Recv(&readM[v(nRowsThisRank+1, 0)], 1, MPI_INT, rankDownLeft, 40, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Recv(&readM[v(nRowsThisRank+1, nColsThisRank+1)], 1, MPI_INT, rankDownRight, 41, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     MPI_Recv(&readM[v(0, 0)], 1, MPI_INT, rankUpLeft, 42, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    MPI_Recv(&readM[v(0, nColsCurrRank+1)], 1, MPI_INT, rankUpRight, 43, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Recv(&readM[v(0, nColsThisRank+1)], 1, MPI_INT, rankUpRight, 43, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 }
 void exchangeBordersMoore() {
     MPI_Request req;
@@ -280,7 +280,7 @@ void countRowsAndCols(FILE* inputFile, int& totalRows, int& totalCols) {
         }
     }
 }
-void fillMatrix(FILE* inputFile, int* matTot, int totalRows, int totalCols) {
+void fillMatrix(FILE* inputFile, int* matrix, int totalRows, int totalCols) {
     rewind(inputFile);
     char c;
     bool end = false;
@@ -291,11 +291,12 @@ void fillMatrix(FILE* inputFile, int* matTot, int totalRows, int totalCols) {
             end = true;
         } else if (c != '\n') {
             if (cont >= totalRows * totalCols) {
+                printf("Righe: %d, Colonne: %d, cont: %d\n", totalRows, totalCols, cont);
                 perror("La matrice all'interno di input.txt ha un numero errato di righe/colonne");
-                delete[] matTot;
+                delete[] matrix;
                 exit(1);
             }
-            matTot[cont] = c - '0';
+            matrix[cont] = c - '0';
             cont++;
         }
     }
@@ -307,13 +308,13 @@ void inputDimensionReader() {
     FILE* inputFile = fopen("input.txt", "r");
     if (inputFile == NULL) {
         perror("Impossibile aprire il file di input");
-        delete[] matTot;
+        delete[] matrix;
         exit(1);
     }
 
     countRowsAndCols(inputFile, totalRows, totalCols);
-    matTot = new int[totalRows * totalCols];
-    fillMatrix(inputFile, matTot, totalRows, totalCols);
+    matrix = new int[totalRows * totalCols];
+    fillMatrix(inputFile, matrix, totalRows, totalCols);
 
     fclose(inputFile);
 }
@@ -325,25 +326,25 @@ int countMatProc(int arr[], int end) {
     return result;
 }
 void inputReader(){  // Serve per leggere, da input.txt, la sottomatrice processo corrente.
-	int partXPrevious = rankX * nPartXForEachProc; //n° di partizioni lungo l'asse X precedenti all'attuale
-	int partYPrevious = rankY * nPartYForEachProc; 
-	beginYCurrProc = countMatProc(nRowsForEachPart, partYPrevious);
-    beginXCurrProc = countMatProc(nColsForEachPart, partXPrevious);
+	int partXPrevious = rankX * nPartXPerProc; //n° di partizioni lungo l'asse X precedenti all'attuale
+	int partYPrevious = rankY * nPartYPerProc; 
+	startYThisProc = countMatProc(nRowsPerPartition, partYPrevious);
+    startXThisProc = countMatProc(nColsPerPartition, partXPrevious);
 
 	//vado a copiare nella matrice readM del processo attuale, la porzione corrispondente dalla matrice totale in input.txt 
-    for (int i=0;i<nRowsCurrRank+2;i++) { //i e j potrebbero partire anche da 1, in quanto la prima è halo, ma conviene inizializzarle a 0, per avitare errori
-        for (int j=0;j<nColsCurrRank+2;j++) {
-            if (i==0 || i==nRowsCurrRank+1 || j==0 || j==nColsCurrRank+1) { //gli halo li inizializzo tutti a 0
+    for (int i=0;i<nRowsThisRank+2;i++) { //i e j potrebbero partire anche da 1, in quanto la prima è halo, ma conviene inizializzarle a 0, per avitare errori
+        for (int j=0;j<nColsThisRank+2;j++) {
+            if (i==0 || i==nRowsThisRank+1 || j==0 || j==nColsThisRank+1) { //gli halo li inizializzo tutti a 0
                 readM[v(i, j)] = 0;
             } else {
-                readM[v(i, j)] = matTot[(i-1+beginYCurrProc) * totalCols + (j-1+beginXCurrProc)]; //se non è un halo border copio il valore dalla mat totale in input.txt
+                readM[v(i, j)] = matrix[(i-1+startYThisProc) * totalCols + (j-1+startXThisProc)]; //se non è un halo border copio il valore dalla mat totale in input.txt
 				//                        ^^ devo togliere i -1 per gli haloBoard
             }
             writeM[v(i, j)] = 0;
         }
     }
 	if(rank != 0)
-		delete [] matTot;
+		delete [] matrix;
 	return;
 }
 int countAliveNeighbors(int x, int y) {
@@ -393,55 +394,55 @@ void execTransFunc(int beginThreadX, int beginThreadY, int sizePartizX, int size
 	}
 }
 
-void recvMatTot(){   // Il processo 0 riceve la sottomatrice da ciascun processo per ricreare la mat totale
+void recvmatrix(){   // Il processo 0 riceve la sottomatrice da ciascun processo per ricreare la mat totale
 	int matIndex, tempIndex;
-	//Prendo prima la sottomatrice (del rank 0) e la copio in matTot
-	for(int i = 1; i < nRowsCurrRank + 2; i++){ //1 --> halo board
-		for(int j = 1; j < nColsCurrRank + 2;j++){
+	//Prendo prima la sottomatrice (del rank 0) e la copio in matrix
+	for(int i = 1; i < nRowsThisRank + 2; i++){ //1 --> halo board
+		for(int j = 1; j < nColsThisRank + 2;j++){
 			matIndex = (i-1) * totalCols + (j-1); 
-			matTot[matIndex] = writeM[v(i,j)];}} 
+			matrix[matIndex] = writeM[v(i,j)];}} 
 
 	for(int rank = 1; rank < size; rank++){
-		int temp[(nRowsForEachProc[rank]*nColsForEachProc[rank])]; //array dove salvo temporaneamente la matrice interna linearizzata che mi arriva da ogni thread 
-		MPI_Recv(temp, nRowsForEachProc[rank]*nColsForEachProc[rank], MPI_INT, rank, 777, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		int temp[(vecRowSizePerProc[rank]*vecColSizePerProc[rank])]; //array dove salvo temporaneamente la matrice interna linearizzata che mi arriva da ogni thread 
+		MPI_Recv(temp, vecRowSizePerProc[rank]*vecColSizePerProc[rank], MPI_INT, rank, 777, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 		//una volta che ho ricevuto la sottomat di quel proc la copio in mat Tot
-		for(int i=0;i<nRowsForEachProc[rank];i++){  //faccio un for sulle righe e colonne della sottomat (questo perte da 0 e non da 1 perche invio la mat interna) 
-			for(int j=0;j<nColsForEachProc[rank];j++){
-				matIndex = (i+startRowForEachProc[rank]) * totalCols + (j+startColForEachProc[rank]); //devo linearizzare l'indice per accedere alla pos in matTot
-                tempIndex = i * nColsForEachProc[rank] + j; //anche temp è linearizzato quindi devo fare la stessa cosa
-				matTot[matIndex] = temp[tempIndex];}}
+		for(int i=0;i<vecRowSizePerProc[rank];i++){  //faccio un for sulle righe e colonne della sottomat (questo perte da 0 e non da 1 perche invio la mat interna) 
+			for(int j=0;j<vecColSizePerProc[rank];j++){
+				matIndex = (i+startRowPerProc[rank]) * totalCols + (j+startColPerProc[rank]); //devo linearizzare l'indice per accedere alla pos in matrix
+                tempIndex = i * vecColSizePerProc[rank] + j; //anche temp è linearizzato quindi devo fare la stessa cosa
+				matrix[matIndex] = temp[tempIndex];}}
 	}
 	return;
 }
 
 void initArrays(){ // Inizializza gli array che contengono varie informazioni per ciascun processo
-	startColForEachProc = new int[size];
-	startRowForEachProc = new int[size];
-	nRowsForEachProc = new int[size];
-	nColsForEachProc = new int[size];
+	startColPerProc = new int[size];
+	startRowPerProc = new int[size];
+	vecRowSizePerProc = new int[size];
+	vecColSizePerProc = new int[size];
 }
 
 void recvInfo(){   //riceve le info dagli altri processi (stampa a schermo) 
 	//all'indice 0 metto tutte le sue informazioni
-	startColForEachProc[0] = beginXCurrProc; //startColForEachProc e startRowForEachProc del processo 0 (rank 0) vengono inizializzati con i valori corrispondenti all'inizio delle colonne e delle righe della sua porzione.
-	startRowForEachProc[0] = beginYCurrProc;  //beginXCurrProc e Y vengono calcolate con la funzione inputReader
-	nRowsForEachProc[0] = nRowsCurrRank; //nRows e nCols ottenuti con la funzione initAllPartitions (parte finale della initAllPartitions)
-	nColsForEachProc[0] = nColsCurrRank;
+	startColPerProc[0] = startXThisProc; //startColPerProc e startRowPerProc del processo 0 (rank 0) vengono inizializzati con i valori corrispondenti all'inizio delle colonne e delle righe della sua porzione.
+	startRowPerProc[0] = startYThisProc;  //startXThisProc e Y vengono calcolate con la funzione inputReader
+	vecRowSizePerProc[0] = nRowsThisRank; //nRows e nCols ottenuti con la funzione initAllPartitions (parte finale della initAllPartitions)
+	vecColSizePerProc[0] = nColsThisRank;
 
 	//ricevere le informazioni sulle dimensioni delle sottomatrici assegnate a ciascun processo per la stampa grafica
 	int info[4];
 	MPI_Status stat;
 	for(int i = 1; i < size; i++){
 		MPI_Recv(info, 4, MPI_INT, MPI_ANY_SOURCE, 222, MPI_COMM_WORLD, &stat);   
-		startColForEachProc[stat.MPI_SOURCE] = info[0];
-		startRowForEachProc[stat.MPI_SOURCE] = info[1];	
-		nColsForEachProc[stat.MPI_SOURCE] = info[2]; 
-		nRowsForEachProc[stat.MPI_SOURCE] = info[3];
+		startColPerProc[stat.MPI_SOURCE] = info[0];
+		startRowPerProc[stat.MPI_SOURCE] = info[1];	
+		vecColSizePerProc[stat.MPI_SOURCE] = info[2]; 
+		vecRowSizePerProc[stat.MPI_SOURCE] = info[3];
 	}
 }
 
 void sendInfo(){ //ogni proc con rank!=0 invia tutte le sue info allo 0
-	int info[4] = {beginXCurrProc, beginYCurrProc, nColsCurrRank, nRowsCurrRank};
+	int info[4] = {startXThisProc, startYThisProc, nColsThisRank, nRowsThisRank};
 	MPI_Send(info, 4, MPI_INT, rankMaster, 222, MPI_COMM_WORLD); 
 }
 
@@ -457,12 +458,12 @@ void initBarriers(){
 	pthread_mutex_init(&mutexComunicationBarrier, NULL);
 
 	//inizializzo barriera per far si che tutti abbiano finito la computazione
-    contcompletedBarrier = 0;
-	pthread_mutex_init(&mutexcompletedBarrier, NULL);
+    contReadyBarrier = 0;
+	pthread_mutex_init(&mutexReadyBarrier, NULL);
     
 	//inizializzo le condition per le barrier precedenti
     pthread_cond_init(&condComunicationBarrier, NULL);
-    pthread_cond_init(&condcompletedBarrier, NULL);
+    pthread_cond_init(&condReadyBarrier, NULL);
 }
 
 void handleBarrier(pthread_mutex_t* mutex, int* counter, pthread_cond_t* condition) {
@@ -476,18 +477,18 @@ void handleBarrier(pthread_mutex_t* mutex, int* counter, pthread_cond_t* conditi
     pthread_mutex_unlock(mutex);
 }
 void completedBarrier(){ 
-    handleBarrier(&mutexcompletedBarrier, &contcompletedBarrier, &condcompletedBarrier);
+    handleBarrier(&mutexReadyBarrier, &contReadyBarrier, &condReadyBarrier);
 }
 void comunicationBarrier(){ 
     handleBarrier(&mutexComunicationBarrier, &contComunicationBarrier, &condComunicationBarrier);
 }
 void destroyBarriers(){
 	pthread_mutex_destroy(&mutexComunicationBarrier);
-	pthread_mutex_destroy(&mutexcompletedBarrier);
+	pthread_mutex_destroy(&mutexReadyBarrier);
 }
 void destroyConditions(){ 
 	pthread_cond_destroy(&condComunicationBarrier);
-	pthread_cond_destroy(&condcompletedBarrier);
+	pthread_cond_destroy(&condReadyBarrier);
 }
 void destroy(){
 	destroyBarriers();
@@ -496,20 +497,20 @@ void destroy(){
 
 void * runThread(void * arg){
 	int tid = *(int *)arg;
-	int tidX = tid % nPartXForEachProc;  //calcolo l'tid lungo lasse X della partizione
-	int tidY = tid / nPartXForEachProc; 
-	int partXPrevious = rankX * nPartXForEachProc + tidX;  //numero di partizioni lungo l'asse X che ci sono prima dell'attuale
-	int partYPrevious = rankY * nPartYForEachProc + tidY;
+	int tidX = tid % nPartXPerProc;  //calcolo l'tid lungo lasse X della partizione
+	int tidY = tid / nPartXPerProc; 
+	int partXPrevious = rankX * nPartXPerProc + tidX;  //numero di partizioni lungo l'asse X che ci sono prima dell'attuale
+	int partYPrevious = rankY * nPartYPerProc + tidY;
 	int beginThreadX = 1; //la partizione inizia dalla prima riga. (perchè la 0 è halo)
 	int beginThreadY = 1;
 
-	for(int j = rankX * nPartXForEachProc; j<partXPrevious; ++j) beginThreadX += nColsForEachPart[j]; 
-	for(int i = rankY * nPartYForEachProc; i<partYPrevious; ++i) beginThreadY += nRowsForEachPart[i];
+	for(int j = rankX * nPartXPerProc; j<partXPrevious; ++j) beginThreadX += nColsPerPartition[j]; 
+	for(int i = rankY * nPartYPerProc; i<partYPrevious; ++i) beginThreadY += nRowsPerPartition[i];
     for(int s = 0; s < step; s++){
         comunicationBarrier();   //sincronizzo tutti i thread prima di procedere. Mi devo assicurare che tutti i processi abbiano ricevuto i dati corretti prima di continuare
 		//Perche serve la barrier di comunicazione? mentre i thread vengono creai ed eseguono la loro funzione, il mainThread è andao avanti nel main è sta facendo 
 		// la exchangeBorders 
-		execTransFunc(beginThreadX, beginThreadY, nColsForEachPart[partXPrevious], nRowsForEachPart[partYPrevious]); //inizioX e Y, size X e Y
+		execTransFunc(beginThreadX, beginThreadY, nColsPerPartition[partXPrevious], nRowsPerPartition[partYPrevious]); //inizioX e Y, size X e Y
         completedBarrier(); //assicura che tutti i thread abbiano completato l'esecuzione di execTransFunc prima di procedere.Altrimenti alcuni potrebbero andare
 		//al passo successivo mentre altri stanno ancora computando, possibili problemi.
     }
@@ -517,22 +518,22 @@ void * runThread(void * arg){
 }
 
 void initializeThreads(){
-    IDthreads = new pthread_t[nThreads]; 
+    vecThreads = new pthread_t[nThreads]; 
     for(int i=1;i<nThreads;i++){  //non parto da 0 ma da 1, in quanto ho già il main thread che ha rank0.
 		//ad esempio se nThread=8 ----> rank0=mainThread  + 7 thread creati da me. Nel frattempo anche al main thread faccio fare la sua parte
         int * tid = new int(i);   //idem
-        pthread_create(&IDthreads[i], NULL, runThread, (void *) tid);  //posso togliere (void*)
+        pthread_create(&vecThreads[i], NULL, runThread, (void *) tid);  //posso togliere (void*)
     }
 }
 void createDatatype(){
-	MPI_Type_vector(nRowsCurrRank+2, 1, nColsCurrRank+2, MPI_INT, &typeColumn); 
-	MPI_Type_vector(nRowsCurrRank, nColsCurrRank, nColsCurrRank+2, MPI_INT, &typeMatLessHaloBorders);
+	MPI_Type_vector(nRowsThisRank+2, 1, nColsThisRank+2, MPI_INT, &typeColumn); 
+	MPI_Type_vector(nRowsThisRank, nColsThisRank, nColsThisRank+2, MPI_INT, &typeMatWithoutHalos);
 	MPI_Type_commit(&typeColumn);
-	MPI_Type_commit(&typeMatLessHaloBorders);
+	MPI_Type_commit(&typeMatWithoutHalos);
 }
 void freeDatatype(){
 	MPI_Type_free(&typeColumn);
-	MPI_Type_free(&typeMatLessHaloBorders);
+	MPI_Type_free(&typeMatWithoutHalos);
 }
 
 
@@ -546,9 +547,9 @@ int main(int argc, char* argv[]){
     if (size != nPartX * nPartY / nThreads){   // se non sono divisibili chiudo il programma
         exit(1);  
 	}
-	inputDimensionReader(); //calcola totalCols e totalRows, inizializza matTot e ci copia tutti i valori dell'input.txt
-	initAllPartitions(); //trova una divisione ottimale calcolando: nPartYForEachProc,nPartXForEachProc. Inizializza gli array che calcolano le dimensioni di ciascuna
-	//partizione nRowsForEachPart,nColsForEachPart. Scompone il rank del proc attuale,calcola il numero di proc lungo X, calcola il numero delle righe e colonne 
+	inputDimensionReader(); //calcola totalCols e totalRows, inizializza matrix e ci copia tutti i valori dell'input.txt
+	initAllPartitions(); //trova una divisione ottimale calcolando: nPartYPerProc,nPartXPerProc. Inizializza gli array che calcolano le dimensioni di ciascuna
+	//partizione nRowsPerPartition,nColsPerPartition. Scompone il rank del proc attuale,calcola il numero di proc lungo X, calcola il numero delle righe e colonne 
 	//del proc attuale
 	calculateMooreNeighbourhood();  //Calcola i rank dei processi vicini 
 	initArrays();
@@ -560,7 +561,7 @@ int main(int argc, char* argv[]){
 	
 	inizio = clock();
 	if(rank==0){
-		if(allegroOn){
+		if(allegroRun){
 			initAllegro();
 			drawWithAllegro(0);
 		}
@@ -576,23 +577,24 @@ int main(int argc, char* argv[]){
 		exchangeBordersMoore();
         comunicationBarrier(); //main thread arriva alla barriera. Presente sia qua che nella funzione degli altri thread creati. Una volta che sono arrivati
 		//tutti, escono dalla barriera. Sicuro i bordi saranno stati inviati e ricevuti, e tutti posso computare.
-		execTransFunc(1, 1, nColsForEachPart[rankX * nPartXForEachProc], nRowsForEachPart[rankY * nPartYForEachProc]);  //Nel frattempo faccio computare anche al main thread.
+		execTransFunc(1, 1, nColsPerPartition[rankX * nPartXPerProc], nRowsPerPartition[rankY * nPartYPerProc]);  //Nel frattempo faccio computare anche al main thread.
 		//Il main thread computerà ogni volta la partizione iniziale (1,1)
     	completedBarrier(); //stesso ragionamento ma dopo, se non metto la barrier, e ad esempio il main thread finisce prima, continua l'esecuzione del 
 		// main e potrebbe aggiornare la grafica, senza che tutti abbiano finito
-		if(allegroOn){
+		if(allegroRun){
 			if(rank == 0){
-				recvMatTot();
+				recvmatrix();
 				drawWithAllegro(i + 1);
 			}
 			else
-				MPI_Send(&writeM[v(1,1)], 1, typeMatLessHaloBorders, rankMaster, 777, MPI_COMM_WORLD);  //invio la matrice interna (senza halo), se non sono il master
+				MPI_Send(&writeM[v(1,1)], 1, typeMatWithoutHalos, rankMaster, 777, MPI_COMM_WORLD);  //invio la matrice interna (senza halo), se non sono il master
 		}
 		swap();
 	}
 	fine = clock();
+
 	if(rank == 0){
-		if(allegroOn)
+		if(allegroRun)
 			allegro_exit();
 		double tempoEsec = (double)(fine-inizio)/CLOCKS_PER_SEC;
 		printf("\nTEMPO DI ESECUZIONE TOTALE: %fs \n", tempoEsec);
@@ -606,3 +608,4 @@ int main(int argc, char* argv[]){
 }
 
 //mpic++ GirlsProject.cpp -I/usr/include -L/usr/lib/x86_64-linux-gnu -lalleg -o GirlsProject
+//mpic++ GOL.cpp -I/usr/include -L/usr/lib/x86_64-linux-gnu -lalleg -o GOL
