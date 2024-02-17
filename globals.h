@@ -74,4 +74,7 @@ int graphicCellDim = 50;	// dimensione grafica di una cella
 int infoLine = 55;			// spazio per scrivere i dati dell'AC
 bool allegroRun = true; 
 
+
+#define v(r,c) (r)*(nColsThisRank+2)+(c)
+
 #endif // !__GLOBALS__H__

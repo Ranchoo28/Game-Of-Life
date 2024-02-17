@@ -2,9 +2,6 @@
 #define __MYALLEGRO__H__
 
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <time.h>
 #include "globals.h"
 
 void initAllegro(){ 
@@ -14,7 +11,7 @@ void initAllegro(){
 	set_window_title("Musalee & Ranchoo APSD Project");
     set_gfx_mode(GFX_AUTODETECT_WINDOWED, totCols * graphicCellDim, totRows * graphicCellDim + infoLine, 0, 0);  
 }
-void drawWithAllegro(int step){  //funzione per la stampa a schermo tramite allegro
+void drawWithAllegro(int stepCurr){  //funzione per la stampa a schermo tramite allegro
 	int endY = totRows * graphicCellDim+5; //inizia poco dopo la fineX della matrice sulle X
 	
 	for(int i = 0; i < totRows; i++){
@@ -50,18 +47,16 @@ void drawWithAllegro(int step){  //funzione per la stampa a schermo tramite alle
 
 	//Stampa a schermo --> INFO
 	char str[64];
-	sprintf(str, "Step %d", step);
+	sprintf(str, "Step %d su %d", stepCurr, step);
 	textout_ex(screen, font, str, 0, endY+1, makecol(255, 255, 255), -1); //+1 per farlo partire poco dopo la fineY della matrice
 	sprintf(str, "N° di partizioni su X: %d",nPartX);
-	textout_ex(screen, font, str, 0, endY+26, makecol(255, 255, 255), -1); // Testo bianco
+	textout_ex(screen, font, str, 0, endY+15, makecol(255, 255, 255), -1); // Testo bianco
 	sprintf(str, "N° di partizioni su Y: %d",nPartY);
-	textout_ex(screen, font, str, 0, endY+37, makecol(255, 255, 255), -1); // Testo bianco
+	textout_ex(screen, font, str, 0, endY+26, makecol(255, 255, 255), -1); // Testo bianco
     sprintf(str, "N° di Thread: %d",nThreads);	
-    textout_ex(screen, font, str, 0, endY+15, makecol(255, 255, 255), -1); // Testo bianco
-	sprintf(str, "N° righe dell'AC: %d",totRows);
+    textout_ex(screen, font, str, 0, endY+37, makecol(255, 255, 255), -1); // Testo bianco
+	sprintf(str, "Dimensioni TOT dell'AC: %d x %d",totRows, totCols);
 	textout_ex(screen, font, str, 250, endY+26, makecol(255, 255, 255), -1); // Testo bianco
-	sprintf(str, "N° colonne dell'AC: %d",totCols);
-	textout_ex(screen, font, str, 250, endY+37, makecol(255, 255, 255), -1); // Testo bianco
 	usleep(delayAllegro * 1000);
 }
 
