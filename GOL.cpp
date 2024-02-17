@@ -1,137 +1,10 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include <time.h>
-#include <algorithm>
-#include <mpi.h>  
+#include "myallegro.h"
 #include <pthread.h>
 #include <allegro.h>
 
 #define v(r,c) (r)*(nColsThisRank+2)+(c)
 
-//configuration.txt
-int nPartX, nPartY;		// N° partizioni lungo asse x (orizzontale)	e lungo asse y (verticale)
-int nThreads;				// N° di thread
-int step;			 		// N° di step
-
-//input.txt
-int totalRows, totalCols;	// N° righe/colonne totali della matrice 
-
-//Valori dell'ambiente MPI
-int size;		// N° complessivo di processi
-int rank;		// id del processo attuale
-
-//Variabili inizializzate dalla funzione initAllPartitions
-int nRowsThisRank, nColsThisRank;			// N° di righe/colonne del processo corrente
-
-int *nRowsPerPartition, *nColsPerPartition;	// Array che contengono, per ogni partizione, il n° di righe/colonne al proprio interno (nella partizione)
-//##################### ad esempio nRowsPerPartition[0] conterrà il n° di righe nella prima partizione e nColsPerPartition[0] il n° di colonne.
-
-int nPartXPerProc, nPartYPerProc;	// N° di partizioni X(oriz)/partizioni Y(vert) che contine ciascun processo
-
-int nProcOnX;	// N° di processi lungo l'asse x
-
-//RANKS
-int rankX, rankY;		// rank del processo con riferimento all'asse x/y
-int rankMaster = 0;		// rank del processo Master
-// rank dei processi adiacenti --> secondo il vicinato di Moore 
-int rankUp, rankDown, rankLeft, rankRight, rankUpLeft, rankUpRight, rankDownLeft, rankDownRight;	
-
-//MATRICI PER LO SWAP
-int * readM;		// matrice di lettura
-int * writeM;		// matrice di scrittura
-
-//INDICI DI INIZIO
-int startXThisProc, startYThisProc;				// indice d'inizio delle colonne (su x)/ righe (su y) del processo corrente
-int *startColPerProc, *startRowPerProc;	// array che contengono, per ogni posizione, gli indici d'inizio delle colonne/righe di ciascun processo
-
-//SIZE DEI PROCESSI
-int *vecRowSizePerProc, *vecColSizePerProc;	// array che contengono, per ogni posizione, la sizeY (rows) / sizeX (cols) di ciascun processo
-
-//MATRICE TOTALE
-int *matrix;	// matrice totale: che viene usata dal rank 0 per ricevere le matrici dagli altri processi e fare la stampa dell'AC
-
-//Datatypes
-MPI_Datatype typeColumn;				// Datatype per inviare una colonna
-MPI_Datatype typeMatWithoutHalos;	// Datatype per inviare una matrice SENZA gli halo borders (mat interna) 
-
-//Variabili PTHREADS
-pthread_t * vecThreads;	// array di thread
-
-//BARRIERS
-pthread_mutex_t mutexReadyBarrier;    				// mutex barriera di computazione dell'AC
-pthread_mutex_t mutexComunicationBarrier;   			// mutex per la barriera di comunicazione delle send /receive
-int contReadyBarrier =0, contComunicationBarrier=0;	//contatori per le barrier
-
-//CONDITIONS
-pthread_cond_t condReadyBarrier;      	// condition per la completedBarrier
-pthread_cond_t condComunicationBarrier;     // condition per la ComunicationBarrier
-
-
-//Variabili per ALLEGRO
-clock_t inizio, fine;		// tempo all'inizio e alla fine dell'algoritmo per calcolare la durata
-int delayAllegro = 80;		// delay per la stampa a schermo di allegro
-int graphicCellDim = 50;	// dimensione grafica di una cella
-int infoLine = 55;			// spazio per scrivere i dati dell'AC
-bool allegroRun = true; 
-
-void initAllegro(){ 
-    allegro_init();
-	install_keyboard();
-    set_color_depth(32);  
-	set_window_title("Musalee & Ranchoo APSD Project");
-    set_gfx_mode(GFX_AUTODETECT_WINDOWED, totalCols * graphicCellDim, totalRows * graphicCellDim + infoLine, 0, 0);  
-}
-void drawWithAllegro(int step){  //funzione per la stampa a schermo tramite allegro
-	int endY = totalRows * graphicCellDim+5; //inizia poco dopo la fineX della matrice sulle X
-	
-	for(int i = 0; i < totalRows; i++){
-		for(int j = 0; j < totalCols; j++){
-			int x = j * graphicCellDim;
-			int y = i * graphicCellDim;
-			if (matrix[i * totalCols + j] == 1) rectfill(screen, x, y, x + graphicCellDim, y + graphicCellDim,  makecol(19, 0, 7)); //Cella VIVA
-			else rectfill(screen, x, y, x + graphicCellDim, y + graphicCellDim, makecol(239, 255, 200));							//Cella MORTA
-		}
-	}
-    rectfill(screen, 0, endY, totalCols * graphicCellDim, totalRows * graphicCellDim + infoLine, makecol(232, 92, 144));
-
-	// Stampa a schermo --> GRIGLIA
-	for(int i = 0; i < totalRows; i++) line(screen, 0, i * graphicCellDim, totalCols * graphicCellDim, i * graphicCellDim, makecol(219, 209, 197));
-	for(int i = 0; i < totalCols; i++) line(screen, i * graphicCellDim, 0, i * graphicCellDim, totalRows * graphicCellDim, makecol(219, 209, 197));
-
-	
-	//Stampa a schermo --> PARTIZIONI VERTICALI 
-	int y=0;
-	for(int i = 0; i < nPartY; i++){
-		if(i % nPartYPerProc == 0) line(screen, 0, y, totalCols * graphicCellDim, y, makecol(29, 120, 116));  //Processi
-		else line(screen, 0, y, totalCols * graphicCellDim, y, makecol(250, 157, 50));							  //Thread (divisioni nei processi)
-		y += nRowsPerPartition[i] * graphicCellDim;
-	}
-
-	//Stampa a schermo --> PARTIZIONI ORIZZONTALI 
-	int x=0;
-	for(int i = 0; i < nPartX; i++){
-		if(i%nPartXPerProc == 0) line(screen, x, 0, x, totalRows * graphicCellDim, makecol(189, 33, 4)); 
-		else line(screen, x, 0, x, totalRows * graphicCellDim, makecol(193, 140, 93));
-		x += nColsPerPartition[i] * graphicCellDim;
-	}
-
-	//Stampa a schermo --> INFO
-	char str[64];
-	sprintf(str, "Step %d", step);
-	textout_ex(screen, font, str, 0, endY+1, makecol(255, 255, 255), -1); //+1 per farlo partire poco dopo la fineY della matrice
-	sprintf(str, "N° di Thread: %d",nThreads);	
-    textout_ex(screen, font, str, 0, endY+15, makecol(255, 255, 255), -1); // Testo bianco
-	sprintf(str, "N° di partizioni su X: %d",nPartX);
-	textout_ex(screen, font, str, 0, endY+26, makecol(255, 255, 255), -1); // Testo bianco
-	sprintf(str, "N° di partizioni su Y: %d",nPartY);
-	textout_ex(screen, font, str, 0, endY+37, makecol(255, 255, 255), -1); // Testo bianco
-	sprintf(str, "N° righe dell'AC: %d",totalRows);
-	textout_ex(screen, font, str, 250, endY+26, makecol(255, 255, 255), -1); // Testo bianco
-	sprintf(str, "N° colonne dell'AC: %d",totalCols);
-	textout_ex(screen, font, str, 250, endY+37, makecol(255, 255, 255), -1); // Testo bianco
-	usleep(delayAllegro * 1000);
-}
-void distributeRowsAndCols(int total, int numPartitions, int* partitionSizes) { // Serve per distribuire il resto. Total può essere totalRows o totalCols
+void distributeRowsAndCols(int total, int numPartitions, int* partitionSizes) { // Serve per distribuire il resto. Total può essere totRows o totCols
     int remainder = total % numPartitions; //remainder è il resto (nel caso in cui non sia divisibile)
     for (int i = 0; i < numPartitions; i++) {
         partitionSizes[i] = total / numPartitions; //viene assegnata la size (minima, senza remainder) ad ogni partizione
@@ -169,8 +42,8 @@ void initAllPartitions() {
 	}
 
 	//Distribuisco le righe e le colonne tra le partizioni (considerando anche il resto, ovvero il remainder)
-    distributeRowsAndCols(totalRows, nPartY, nRowsPerPartition);
-    distributeRowsAndCols(totalCols, nPartX, nColsPerPartition);
+    distributeRowsAndCols(totRows, nPartY, nRowsPerPartition);
+    distributeRowsAndCols(totCols, nPartX, nColsPerPartition);
 
     // Calcola il numero di processi lungo l'asse X
 	// Quante sottomatrici finiscono su X 
@@ -265,7 +138,7 @@ void configurationReader() {
     }
 }
 //conta il numero di righe e colonne del file di input
-void countRowsAndCols(FILE* inputFile, int& totalRows, int& totalCols) {
+void countRowsAndCols(FILE* inputFile, int& totRows, int& totCols) {
     char c;
     bool end = false, colsCounted = false;
     while (!end) {
@@ -274,13 +147,13 @@ void countRowsAndCols(FILE* inputFile, int& totalRows, int& totalCols) {
             end = true;
         } else if (c == '\n') {
             colsCounted = true;
-            totalRows++;
+            totRows++;
         } else if (!colsCounted) {
-            totalCols++;
+            totCols++;
         }
     }
 }
-void fillMatrix(FILE* inputFile, int* matrix, int totalRows, int totalCols) {
+void fillMatrix(FILE* inputFile, int* matrix, int totRows, int totCols) {
     rewind(inputFile);
     char c;
     bool end = false;
@@ -290,8 +163,8 @@ void fillMatrix(FILE* inputFile, int* matrix, int totalRows, int totalCols) {
         if (c == EOF) {
             end = true;
         } else if (c != '\n') {
-            if (cont >= totalRows * totalCols) {
-                printf("Righe: %d, Colonne: %d, cont: %d\n", totalRows, totalCols, cont);
+            if (cont >= totRows * totCols) {
+                printf("Righe: %d, Colonne: %d, cont: %d\n", totRows, totCols, cont);
                 perror("La matrice all'interno di input.txt ha un numero errato di righe/colonne");
                 delete[] matrix;
                 exit(1);
@@ -302,8 +175,8 @@ void fillMatrix(FILE* inputFile, int* matrix, int totalRows, int totalCols) {
     }
 }
 void inputDimensionReader() {
-    totalRows = 0;
-    totalCols = 0;
+    totRows = 0;
+    totCols = 0;
 
     FILE* inputFile = fopen("input.txt", "r");
     if (inputFile == NULL) {
@@ -312,9 +185,9 @@ void inputDimensionReader() {
         exit(1);
     }
 
-    countRowsAndCols(inputFile, totalRows, totalCols);
-    matrix = new int[totalRows * totalCols];
-    fillMatrix(inputFile, matrix, totalRows, totalCols);
+    countRowsAndCols(inputFile, totRows, totCols);
+    matrix = new int[totRows * totCols];
+    fillMatrix(inputFile, matrix, totRows, totCols);
 
     fclose(inputFile);
 }
@@ -337,7 +210,7 @@ void inputReader(){  // Serve per leggere, da input.txt, la sottomatrice process
             if (i==0 || i==nRowsThisRank+1 || j==0 || j==nColsThisRank+1) { //gli halo li inizializzo tutti a 0
                 readM[v(i, j)] = 0;
             } else {
-                readM[v(i, j)] = matrix[(i-1+startYThisProc) * totalCols + (j-1+startXThisProc)]; //se non è un halo border copio il valore dalla mat totale in input.txt
+                readM[v(i, j)] = matrix[(i-1+startYThisProc) * totCols + (j-1+startXThisProc)]; //se non è un halo border copio il valore dalla mat totale in input.txt
 				//                        ^^ devo togliere i -1 per gli haloBoard
             }
             writeM[v(i, j)] = 0;
@@ -351,7 +224,7 @@ int countAliveNeighbors(int x, int y) {
     int count = 0;
     for (int dx = -1; dx < 2; ++dx){
         for (int dy = -1; dy < 2; ++dy) {
-            if((dx != 0 || dy != 0) && readM[v((x+dx+totalRows) % totalRows, (y+dy+totalCols) % totalCols)] == 1) {
+            if((dx != 0 || dy != 0) && readM[v((x+dx+totRows) % totRows, (y+dy+totCols) % totCols)] == 1) {
                 count++;
             }
         }
@@ -399,7 +272,7 @@ void recvmatrix(){   // Il processo 0 riceve la sottomatrice da ciascun processo
 	//Prendo prima la sottomatrice (del rank 0) e la copio in matrix
 	for(int i = 1; i < nRowsThisRank + 2; i++){ //1 --> halo board
 		for(int j = 1; j < nColsThisRank + 2;j++){
-			matIndex = (i-1) * totalCols + (j-1); 
+			matIndex = (i-1) * totCols + (j-1); 
 			matrix[matIndex] = writeM[v(i,j)];}} 
 
 	for(int rank = 1; rank < size; rank++){
@@ -408,7 +281,7 @@ void recvmatrix(){   // Il processo 0 riceve la sottomatrice da ciascun processo
 		//una volta che ho ricevuto la sottomat di quel proc la copio in mat Tot
 		for(int i=0;i<vecRowSizePerProc[rank];i++){  //faccio un for sulle righe e colonne della sottomat (questo perte da 0 e non da 1 perche invio la mat interna) 
 			for(int j=0;j<vecColSizePerProc[rank];j++){
-				matIndex = (i+startRowPerProc[rank]) * totalCols + (j+startColPerProc[rank]); //devo linearizzare l'indice per accedere alla pos in matrix
+				matIndex = (i+startRowPerProc[rank]) * totCols + (j+startColPerProc[rank]); //devo linearizzare l'indice per accedere alla pos in matrix
                 tempIndex = i * vecColSizePerProc[rank] + j; //anche temp è linearizzato quindi devo fare la stessa cosa
 				matrix[matIndex] = temp[tempIndex];}}
 	}
@@ -547,7 +420,7 @@ int main(int argc, char* argv[]){
     if (size != nPartX * nPartY / nThreads){   // se non sono divisibili chiudo il programma
         exit(1);  
 	}
-	inputDimensionReader(); //calcola totalCols e totalRows, inizializza matrix e ci copia tutti i valori dell'input.txt
+	inputDimensionReader(); //calcola totCols e totRows, inizializza matrix e ci copia tutti i valori dell'input.txt
 	initAllPartitions(); //trova una divisione ottimale calcolando: nPartYPerProc,nPartXPerProc. Inizializza gli array che calcolano le dimensioni di ciascuna
 	//partizione nRowsPerPartition,nColsPerPartition. Scompone il rank del proc attuale,calcola il numero di proc lungo X, calcola il numero delle righe e colonne 
 	//del proc attuale
@@ -573,7 +446,7 @@ int main(int argc, char* argv[]){
 
     initializeThreads();
 	for (int i = 0; i < step; i++){
-		//sleep(1); //attivare solo per rallentare gli step --> togliere per calcolare il tempo
+		sleep(1); //attivare solo per rallentare gli step --> togliere per calcolare il tempo
 		exchangeBordersMoore();
         comunicationBarrier(); //main thread arriva alla barriera. Presente sia qua che nella funzione degli altri thread creati. Una volta che sono arrivati
 		//tutti, escono dalla barriera. Sicuro i bordi saranno stati inviati e ricevuti, e tutti posso computare.
