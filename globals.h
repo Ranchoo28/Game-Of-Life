@@ -76,5 +76,5 @@ bool allegroRun = true;
 
 
 #define v(r,c) (r)*(nColsThisRank+2)+(c)
-
+ 
 #endif // !__GLOBALS__H__

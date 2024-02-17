@@ -2,7 +2,7 @@
 #define __READINGCONF_H
 
 #include "myallegro.h"
-
+ 
 
 int readConfigValue(FILE* file, char* buffer, int maxLineLength, long maxLimit) {
     if (fgets(buffer, maxLineLength, file)) {
