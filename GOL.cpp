@@ -70,5 +70,5 @@ int main(int argc, char* argv[]){
 	return 0;
 }
 
-//mpic++ GOL.cpp -I/usr/include -L/usr/lib/x86_64-linux-gnu -lalleg -o GOL
-//mpirun -np 2 ./GOL
+// mpic++ GOL.cpp -I/usr/include -L/usr/lib/x86_64-linux-gnu -lalleg -o GOL
+// mpirun -np 2 ./GOL
