@@ -20,7 +20,7 @@ int sumPartitions(int start, int numPartitions, int* partitionSizes) { // Serve 
     return sum; //restituisce la size (numero di celle totali) della sottomatrice del processo corrente
 }
 
-void initAllPartitions() {
+void initPartitions() {
 
 	// Inizializza le dimensioni delle partizioni
     nRowsPerPartition = new int[nPartY]; //quante righe di celle per ogni partizione

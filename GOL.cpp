@@ -11,7 +11,7 @@ int main(int argc, char* argv[]){
         exit(1);  
 	}
 	inputDimensionReader(); //calcola totCols e totRows, inizializza matrix e ci copia tutti i valori dell'input.txt
-	initAllPartitions(); //trova una divisione ottimale calcolando: nPartYPerProc,nPartXPerProc. Inizializza gli array che calcolano le dimensioni di ciascuna
+	initPartitions(); //trova una divisione ottimale calcolando: nPartYPerProc,nPartXPerProc. Inizializza gli array che calcolano le dimensioni di ciascuna
 	//partizione nRowsPerPartition,nColsPerPartition. Scompone il rank del proc attuale,calcola il numero di proc lungo X, calcola il numero delle righe e colonne 
 	//del proc attuale
 	calculateMooreNeighbourhood();  //Calcola i rank dei processi vicini 
@@ -36,7 +36,7 @@ int main(int argc, char* argv[]){
 
     initializeThreads();
 	for (int i = 0; i < step; i++){
-		sleep(1); //attivare solo per rallentare gli step --> togliere per calcolare il tempo
+		//sleep(1); //attivare solo per rallentare gli step --> togliere per calcolare il tempo
 		exchangeBordersMoore();
         comunicationBarrier(); //main thread arriva alla barriera. Presente sia qua che nella funzione degli altri thread creati. Una volta che sono arrivati
 		//tutti, escono dalla barriera. Sicuro i bordi saranno stati inviati e ricevuti, e tutti posso computare.
@@ -70,5 +70,5 @@ int main(int argc, char* argv[]){
 	return 0;
 }
 
-// mpic++ GOL.cpp -I/usr/include -L/usr/lib/x86_64-linux-gnu -lalleg -o GOL
-// mpirun -np 2 ./GOL
+//mpic++ GOL.cpp -I/usr/include -L/usr/lib/x86_64-linux-gnu -lalleg -o GOL
+//mpirun -np 2 ./GOL
