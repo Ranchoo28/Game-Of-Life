@@ -45,7 +45,9 @@ void recvmatrix(){   // Il processo 0 riceve la sottomatrice da ciascun processo
 	for(int i = 1; i < nRowsThisRank + 2; i++){ //1 --> halo board
 		for(int j = 1; j < nColsThisRank + 2;j++){
 			matIndex = (i-1) * totCols + (j-1); 
-			matrix[matIndex] = writeM[v(i,j)];}} 
+			matrix[matIndex] = writeM[v(i,j)];
+		}
+	} 
 
 	for(int rank = 1; rank < size; rank++){
 		int temp[(vecRowSizePerProc[rank]*vecColSizePerProc[rank])]; //array dove salvo temporaneamente la matrice interna linearizzata che mi arriva da ogni thread 
@@ -53,9 +55,12 @@ void recvmatrix(){   // Il processo 0 riceve la sottomatrice da ciascun processo
 		//una volta che ho ricevuto la sottomat di quel proc la copio in mat Tot
 		for(int i=0;i<vecRowSizePerProc[rank];i++){  //faccio un for sulle righe e colonne della sottomat (questo perte da 0 e non da 1 perche invio la mat interna) 
 			for(int j=0;j<vecColSizePerProc[rank];j++){
+
 				matIndex = (i+startRowPerProc[rank]) * totCols + (j+startColPerProc[rank]); //devo linearizzare l'indice per accedere alla pos in matrix
                 tempIndex = i * vecColSizePerProc[rank] + j; //anche temp è linearizzato quindi devo fare la stessa cosa
-				matrix[matIndex] = temp[tempIndex];}}
+				matrix[matIndex] = temp[tempIndex];
+			}
+		}
 	}
 	return;
 }

@@ -32,15 +32,15 @@ void drawWithAllegro(int stepCurr){  //funzione per la stampa a schermo tramite 
 	// PARTIZIONI VERTICALI 
 	int y=0;
 	for(int i = 0; i < nPartY; i++){
-		if(i % nPartYPerProc == 0) line(screen, 0, y, totCols * graphicCellDim, y, makecol(29, 120, 116));  //Processi
-		else line(screen, 0, y, totCols * graphicCellDim, y, makecol(250, 157, 50));							  //Thread (divisioni nei processi)
+		if(i % nPartYPerProc == 0) line(screen, 0, y, totCols * graphicCellDim, y, makecol(153, 50, 250));  //Processi
+		else line(screen, 0, y, totCols * graphicCellDim, y, makecol(250, 80, 50));							  //Thread (divisioni nei processi)
 		y += nRowsPerPartition[i] * graphicCellDim;
 	}
 
 	// PARTIZIONI ORIZZONTALI 
 	int x=0;
 	for(int i = 0; i < nPartX; i++){
-		if(i%nPartXPerProc == 0) line(screen, x, 0, x, totRows * graphicCellDim, makecol(189, 33, 4)); 
+		if(i%nPartXPerProc == 0) line(screen, x, 0, x, totRows * graphicCellDim, makecol(188, 148, 227)); 
 		else line(screen, x, 0, x, totRows * graphicCellDim, makecol(193, 140, 93));
 		x += nColsPerPartition[i] * graphicCellDim;
 	}
@@ -53,10 +53,10 @@ void drawWithAllegro(int stepCurr){  //funzione per la stampa a schermo tramite 
 	textout_ex(screen, font, str, 0, endY+15, makecol(255, 255, 255), -1); // Testo bianco
 	sprintf(str, "N° di partizioni su Y: %d",nPartY);
 	textout_ex(screen, font, str, 0, endY+26, makecol(255, 255, 255), -1); // Testo bianco
-    sprintf(str, "N° di Thread: %d",nThreads);	
+    sprintf(str, "N° di Thread/Proc: %d",nThreads);	
     textout_ex(screen, font, str, 0, endY+37, makecol(255, 255, 255), -1); // Testo bianco
 	sprintf(str, "Dimensioni TOT dell'AC: %d x %d",totRows, totCols);
-	textout_ex(screen, font, str, 250, endY+26, makecol(255, 255, 255), -1); // Testo bianco
+	textout_ex(screen, font, str, 250, endY+15, makecol(255, 255, 255), -1); // Testo bianco
 	usleep(delayAllegro * 1000);
 }
 

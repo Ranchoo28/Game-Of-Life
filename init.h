@@ -20,7 +20,7 @@ int sumPartitions(int start, int numPartitions, int* partitionSizes) { // Serve 
     return sum; //restituisce la size (numero di celle totali) della sottomatrice del processo corrente
 }
 
-void initAllPartitions() {
+void initAllPartitions() { // Main
 
 	// Inizializza le dimensioni delle partizioni
     nRowsPerPartition = new int[nPartY]; //quante righe di celle per ogni partizione
@@ -29,25 +29,24 @@ void initAllPartitions() {
     // Trova un divisore comune (i) per nThreads e nPartX o nThreads e nPartY
     //(in base alla formula size* nThreads = nPartX * nPartY si sa che ne esiste sempre uno)
 	// Decide COME suddividere la matrice totale tra i processi (quali sottomatrici assegnare a ciascun processo)
-    for (int i = nThreads; i > 0; i--) {
-        if ((nThreads % i == 0) && (nPartX % i == 0)) { //se i è un divisore comune di nThreads e nPartX
-            nPartYPerProc = nThreads / i; //per fare in modo che ad ogni thread venga assegnata una partizione: (nThreads /1)*1= nThreads
-            nPartXPerProc = i;
+    for (int i = nThreads; i > 0; i--) {                     // 4 2  nthread = 4 
+        if ((nThreads % i == 0) && (nPartX % i == 0)) { //se i è un divisore comune di nThreads e nPartX (4 / 4)(e 4 / 4 )
+            nPartYPerProc = nThreads / i; //per fare in modo che ad ogni thread venga assegnata una partizione: 4/4 = 1 oppure 4/2 = 2
+            nPartXPerProc = i; // 4 oppure 2 
             break;
-        } else if ((nThreads % i == 0) && (nPartY % i == 0)) { //se i è un divisore comune di nThreads e nPartY
-            nPartYPerProc = i;
-            nPartXPerProc = nThreads / i;
+        } else if ((nThreads % i == 0) && (nPartY % i == 0)) { //se i è un divisore comune di nThreads e nPartY 2 4 nthread = 4
+            nPartYPerProc = i;                    // 4 oppure 2 
+            nPartXPerProc = nThreads / i;        // 4 / 4 = 1 oppure 4 / 2 = 2
             break;
         } 
 	}
-
 	//Distribuisco le righe e le colonne tra le partizioni (considerando anche il resto, ovvero il remainder)
     distributeRowsAndCols(totRows, nPartY, nRowsPerPartition);
     distributeRowsAndCols(totCols, nPartX, nColsPerPartition);
-
     // Calcola il numero di processi lungo l'asse X
 	// Quante sottomatrici finiscono su X 
     nProcOnX = nPartX / nPartXPerProc;
+    //printf("nProcOnX: %d\n", nProcOnX);
 
     // Scomponi il rank del processo --> COORDINATE DEL PROCESSO
     rankX = rank % nProcOnX;
@@ -61,16 +60,21 @@ void initAllPartitions() {
     readM = new int[(nRowsThisRank + 2) * (nColsThisRank + 2)]; //+2 perchè si considerano le halo cells
     writeM = new int[(nRowsThisRank + 2) * (nColsThisRank + 2)];
 }
-void calculateMooreNeighbourhood(){ // Calcolo del rank dei processi adiacenti (sopra, sotto, sinistra, destra, diagonali)
 
-    rankUp = ((rank - nProcOnX + size) % size);
-    rankDown = ((rank + nProcOnX) % size);
-    rankLeft = ((rank - 1 + nProcOnX) % nProcOnX) + (rank / nProcOnX) * nProcOnX;
-    rankRight = ((rank + 1) % nProcOnX) + (rank / nProcOnX) * nProcOnX;
-    rankUpLeft = ((rankUp - 1 + nProcOnX) % nProcOnX) + (rankUp / nProcOnX) * nProcOnX;
-    rankUpRight = ((rankUp + 1) % nProcOnX) + (rankUp / nProcOnX) * nProcOnX;
-    rankDownLeft = ((rankDown - 1 + nProcOnX) % nProcOnX) + (rankDown / nProcOnX) * nProcOnX;
-    rankDownRight = ((rankDown + 1) % nProcOnX) + (rankDown / nProcOnX) * nProcOnX;
+void calculateMooreNeighbourhood(){ // Calcolo del rank dei processi adiacenti (sopra, sotto, sinistra, destra, diagonali)
+    // rank = 1, nProcOnX = 1, size = 2
+
+    rankUp = ((rank - nProcOnX + size) % size);   // 1 - 1 + 2 = 2 % 2 = 0 
+    rankDown = ((rank + nProcOnX) % size); // 1 + 1 % 2 = 0
+    rankLeft = ((rank - 1 + nProcOnX) % nProcOnX) + (rank / nProcOnX) * nProcOnX; // 1 - 1 + 1 = 1 % 1 = 0 + 0 = 0
+    rankRight = ((rank + 1) % nProcOnX) + (rank / nProcOnX) * nProcOnX; // 2 % 1 = 0 + 1 = 1 * 1 = 1
+    rankUpLeft = ((rankUp - 1 + nProcOnX) % nProcOnX) + (rankUp / nProcOnX) * nProcOnX; // 0 - 1 + 1 = 0 % 1 = 0 + 0 = 0
+    rankUpRight = ((rankUp + 1) % nProcOnX) + (rankUp / nProcOnX) * nProcOnX; // 0 + 1 % 1 = 1 * 1 = 1
+    rankDownLeft = ((rankDown - 1 + nProcOnX) % nProcOnX) + (rankDown / nProcOnX) * nProcOnX; // 0 - 1 + 1 = 0 % 1 = 0 + 0 = 0
+    rankDownRight = ((rankDown + 1) % nProcOnX) + (rankDown / nProcOnX) * nProcOnX; // 0 + 1 % 1 = 1 * 1 = 1
+
+    //printf("rankAtt: %d, rankUp: %d, rankDown: %d, rankLeft: %d, rankRight: %d\n",rank,  rankUp, rankDown, rankLeft, rankRight);
+
 }
 
 void initArrays(){ // Inizializza gli array che contengono varie informazioni per ciascun processo
