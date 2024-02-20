@@ -24,12 +24,12 @@ void drawWithAllegro(int stepCurr){  //funzione per la stampa a schermo tramite 
 	}
     rectfill(screen, 0, endY, totCols * graphicCellDim, totRows * graphicCellDim + infoLine, makecol(0, 162, 255));
 
-	// Stampa a schermo --> GRIGLIA
+	// GRIGLIA
 	for(int i = 0; i < totRows; i++) line(screen, 0, i * graphicCellDim, totCols * graphicCellDim, i * graphicCellDim, makecol(219, 209, 197));
 	for(int i = 0; i < totCols; i++) line(screen, i * graphicCellDim, 0, i * graphicCellDim, totRows * graphicCellDim, makecol(219, 209, 197));
 
 	
-	//Stampa a schermo --> PARTIZIONI VERTICALI 
+	// PARTIZIONI VERTICALI 
 	int y=0;
 	for(int i = 0; i < nPartY; i++){
 		if(i % nPartYPerProc == 0) line(screen, 0, y, totCols * graphicCellDim, y, makecol(29, 120, 116));  //Processi
@@ -37,7 +37,7 @@ void drawWithAllegro(int stepCurr){  //funzione per la stampa a schermo tramite 
 		y += nRowsPerPartition[i] * graphicCellDim;
 	}
 
-	//Stampa a schermo --> PARTIZIONI ORIZZONTALI 
+	// PARTIZIONI ORIZZONTALI 
 	int x=0;
 	for(int i = 0; i < nPartX; i++){
 		if(i%nPartXPerProc == 0) line(screen, x, 0, x, totRows * graphicCellDim, makecol(189, 33, 4)); 
@@ -45,7 +45,7 @@ void drawWithAllegro(int stepCurr){  //funzione per la stampa a schermo tramite 
 		x += nColsPerPartition[i] * graphicCellDim;
 	}
 
-	//Stampa a schermo --> INFO
+	// INFORMAZIONI
 	char str[64];
 	sprintf(str, "Step %d su %d", stepCurr, step);
 	textout_ex(screen, font, str, 0, endY+1, makecol(255, 255, 255), -1); //+1 per farlo partire poco dopo la fineY della matrice

@@ -11,7 +11,7 @@ int main(int argc, char* argv[]){
         exit(1);  
 	}
 	inputDimensionReader(); //calcola totCols e totRows, inizializza matrix e ci copia tutti i valori dell'input.txt
-	initPartitions(); //trova una divisione ottimale calcolando: nPartYPerProc,nPartXPerProc. Inizializza gli array che calcolano le dimensioni di ciascuna
+	initAllPartitions(); //trova una divisione ottimale calcolando: nPartYPerProc,nPartXPerProc. Inizializza gli array che calcolano le dimensioni di ciascuna
 	//partizione nRowsPerPartition,nColsPerPartition. Scompone il rank del proc attuale,calcola il numero di proc lungo X, calcola il numero delle righe e colonne 
 	//del proc attuale
 	calculateMooreNeighbourhood();  //Calcola i rank dei processi vicini 
@@ -28,7 +28,7 @@ int main(int argc, char* argv[]){
 			initAllegro();
 			drawWithAllegro(0);
 		}
-		recvInfo(); //rank0 riceve tutto, altrimenti inviano le informazioni
+		recvInfo();
 	}
 	else{
 		sendInfo();
@@ -45,12 +45,12 @@ int main(int argc, char* argv[]){
     	completedBarrier(); //stesso ragionamento ma dopo, se non metto la barrier, e ad esempio il main thread finisce prima, continua l'esecuzione del 
 		// main e potrebbe aggiornare la grafica, senza che tutti abbiano finito
 		if(allegroRun){
-			if(rank == 0){
+			if(rank == rankMaster){
 				recvmatrix();
 				drawWithAllegro(i + 1);
 			}
 			else
-				MPI_Send(&writeM[v(1,1)], 1, typeMatWithoutHalos, rankMaster, 777, MPI_COMM_WORLD);  //invio la matrice interna (senza halo), se non sono il master
+				MPI_Send(&writeM[v(1,1)], 1, typeMatWithoutHalos, rankMaster, 777, MPI_COMM_WORLD);  //invio la matrice interna (senza halo)
 		}
 		swap();
 	}
