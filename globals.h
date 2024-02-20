@@ -72,7 +72,7 @@ clock_t inizio, fine;		// tempo all'inizio e alla fine dell'algoritmo per calcol
 int delayAllegro = 80;		// delay per la stampa a schermo di allegro
 int graphicCellDim = 50;	// dimensione grafica di una cella
 int infoLine = 55;			// spazio per scrivere i dati dell'AC
-bool allegroRun = true; 
+bool allegroRun = false; 
 
 
 #define v(r,c) (r)*(nColsThisRank+2)+(c)
